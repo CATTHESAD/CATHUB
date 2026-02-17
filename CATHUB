@@ -1,0 +1,290 @@
+-- ========================================
+-- 🩸 CATHUD PROFISSIONAL FINAL
+-- ========================================
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+
+-- ================= VARIÁVEIS =================
+local flying = false
+local noclip = false
+
+local speed, minSpeed, maxSpeed = 70, 10, 200
+local walkSpeed, minWalkSpeed, maxWalkSpeed = 16, 8, 100
+local jumpPower, minJumpPower, maxJumpPower = 50, 20, 200
+
+local character, humanoid, root
+local bodyVelocity, bodyGyro
+local flyConnection, noclipConnection
+
+local control = {forward=0,backward=0,left=0,right=0,up=0,down=0}
+
+-- ================= GUI =================
+local gui = Instance.new("ScreenGui")
+gui.Name = "CATHUD_GUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- ÍCONE FLUTUANTE
+local hudIcon = Instance.new("TextButton")
+hudIcon.Size = UDim2.new(0,65,0,65)
+hudIcon.Position = UDim2.new(1,-80,0.5,-32)
+hudIcon.BackgroundColor3 = Color3.fromRGB(150,0,0)
+hudIcon.Text = "🩸"
+hudIcon.TextScaled = true
+hudIcon.Font = Enum.Font.GothamBlack
+hudIcon.TextColor3 = Color3.fromRGB(255,255,255)
+hudIcon.Parent = gui
+
+-- HUD PRINCIPAL
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0,850,0,700)
+mainFrame.Position = UDim2.new(0.5,0,0.5,0)
+mainFrame.AnchorPoint = Vector2.new(0.5,0.5)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20,0,0)
+mainFrame.BorderColor3 = Color3.fromRGB(255,0,0)
+mainFrame.BorderSizePixel = 4
+mainFrame.Visible = false
+mainFrame.Parent = gui
+mainFrame.ClipsDescendants = true
+
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0,25)
+
+-- ================= GOTAS DE SANGUE =================
+local function createBloodDrop(parent)
+	local drop = Instance.new("Frame")
+	local size = math.random(6,12)
+	drop.Size = UDim2.new(0,size,0,size*2)
+	drop.BackgroundColor3 = Color3.fromRGB(180,0,0)
+	drop.BorderSizePixel = 0
+	drop.AnchorPoint = Vector2.new(0.5,0)
+	drop.Position = UDim2.new(math.random(),0,-0.1,0)
+	drop.Parent = parent
+	
+	local function animate()
+		drop.Position = UDim2.new(math.random(),0,-0.1,0)
+		local tween = TweenService:Create(drop,
+			TweenInfo.new(math.random(4,7), Enum.EasingStyle.Linear),
+			{Position = UDim2.new(drop.Position.X.Scale,0,1,0)})
+		tween:Play()
+		tween.Completed:Connect(animate)
+	end
+	animate()
+end
+
+for i=1,20 do
+	createBloodDrop(mainFrame)
+end
+
+-- LOGO
+local logo = Instance.new("TextLabel")
+logo.Size = UDim2.new(1,0,0,110)
+logo.BackgroundTransparency = 1
+logo.Text = "🩸 CATHUD"
+logo.TextScaled = true
+logo.Font = Enum.Font.GothamBlack
+logo.TextColor3 = Color3.fromRGB(255,0,0)
+logo.Parent = mainFrame
+
+-- ================= SLIDER FUNÇÃO =================
+local function createSlider(yPos, minValue, maxValue, value, text, callback)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.9,0,0,35)
+	label.Position = UDim2.new(0.05,0,0,yPos)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.fromRGB(255,0,0)
+	label.TextScaled = true
+	label.Font = Enum.Font.Gotham
+	label.Text = text.." "..value
+	label.Parent = mainFrame
+
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(0.9,0,0,14)
+	bar.Position = UDim2.new(0.05,0,0,yPos+40)
+	bar.BackgroundColor3 = Color3.fromRGB(60,0,0)
+	bar.BorderSizePixel = 0
+	bar.Parent = mainFrame
+
+	local handle = Instance.new("Frame")
+	handle.Size = UDim2.new(0,26,0,26)
+	handle.AnchorPoint = Vector2.new(0.5,0.5)
+	handle.Position = UDim2.new((value-minValue)/(maxValue-minValue),0,0.5,0)
+	handle.BackgroundColor3 = Color3.fromRGB(255,0,0)
+	handle.Parent = bar
+
+	local arrow = Instance.new("TextLabel")
+	arrow.Size = UDim2.new(1,0,1,0)
+	arrow.BackgroundTransparency = 1
+	arrow.Text = "⬆️"
+	arrow.TextColor3 = Color3.fromRGB(255,0,0)
+	arrow.TextScaled = true
+	arrow.Parent = handle
+
+	local dragging = false
+
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local percent = math.clamp(
+				(UserInputService:GetMouseLocation().X - bar.AbsolutePosition.X)
+				/ bar.AbsoluteSize.X, 0, 1)
+
+			local newValue = math.floor(minValue + (maxValue-minValue)*percent)
+
+			handle.Position = UDim2.new(percent,0,0.5,0)
+			label.Text = text.." "..newValue
+			callback(newValue)
+		end
+	end)
+end
+
+-- ================= CRIAR SLIDERS =================
+local baseY = 130
+local gap = 170
+
+createSlider(baseY, minSpeed, maxSpeed, speed, "Velocidade de Voo:", function(v)
+	speed = v
+end)
+
+createSlider(baseY+gap, minWalkSpeed, maxWalkSpeed, walkSpeed, "Velocidade de Andar:", function(v)
+	walkSpeed = v
+	if humanoid then humanoid.WalkSpeed = v end
+end)
+
+createSlider(baseY+gap*2, minJumpPower, maxJumpPower, jumpPower, "Altura do Pulo:", function(v)
+	jumpPower = v
+	if humanoid then humanoid.JumpPower = v end
+end)
+
+-- ================= BOTÕES ORGANIZADOS =================
+local buttonContainer = Instance.new("Frame")
+buttonContainer.Size = UDim2.new(0.9,0,0,90)
+buttonContainer.Position = UDim2.new(0.05,0,1,-120)
+buttonContainer.BackgroundTransparency = 1
+buttonContainer.Parent = mainFrame
+
+local flyButton = Instance.new("TextButton")
+flyButton.Size = UDim2.new(0.48,0,1,0)
+flyButton.Position = UDim2.new(0,0,0,0)
+flyButton.BackgroundColor3 = Color3.fromRGB(255,0,0)
+flyButton.Text = "🛫 Fly"
+flyButton.TextScaled = true
+flyButton.Font = Enum.Font.GothamBold
+flyButton.TextColor3 = Color3.fromRGB(255,255,255)
+flyButton.Parent = buttonContainer
+
+local noclipButton = Instance.new("TextButton")
+noclipButton.Size = UDim2.new(0.48,0,1,0)
+noclipButton.Position = UDim2.new(0.52,0,0,0)
+noclipButton.BackgroundColor3 = Color3.fromRGB(150,0,0)
+noclipButton.Text = "🚫 Noclip"
+noclipButton.TextScaled = true
+noclipButton.Font = Enum.Font.GothamBold
+noclipButton.TextColor3 = Color3.fromRGB(255,255,255)
+noclipButton.Parent = buttonContainer
+
+-- ================= FUNÇÕES =================
+local function toggleNoclip()
+	noclip = not noclip
+	
+	if noclip then
+		noclipConnection = RunService.Stepped:Connect(function()
+			for _,v in pairs(player.Character:GetDescendants()) do
+				if v:IsA("BasePart") then
+					v.CanCollide = false
+				end
+			end
+		end)
+	else
+		if noclipConnection then noclipConnection:Disconnect() end
+		for _,v in pairs(player.Character:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.CanCollide = true
+			end
+		end
+	end
+end
+
+local function toggleFly()
+	flying = not flying
+	
+	if flying then
+		character = player.Character
+		humanoid = character:WaitForChild("Humanoid")
+		root = character:WaitForChild("HumanoidRootPart")
+		
+		humanoid.PlatformStand = true
+		
+		bodyVelocity = Instance.new("BodyVelocity", root)
+		bodyVelocity.MaxForce = Vector3.new(9e9,9e9,9e9)
+
+		bodyGyro = Instance.new("BodyGyro", root)
+		bodyGyro.MaxTorque = Vector3.new(9e9,9e9,9e9)
+		bodyGyro.P = 10000
+
+		flyConnection = RunService.RenderStepped:Connect(function()
+			local cam = workspace.CurrentCamera
+			local dir = (cam.CFrame.LookVector*(control.forward-control.backward))
+				+ (cam.CFrame.RightVector*(control.right-control.left))
+				+ (Vector3.new(0,1,0)*(control.up-control.down))
+			bodyVelocity.Velocity = dir * speed
+			bodyGyro.CFrame = cam.CFrame
+		end)
+	else
+		if flyConnection then flyConnection:Disconnect() end
+		if bodyVelocity then bodyVelocity:Destroy() end
+		if bodyGyro then bodyGyro:Destroy() end
+		if humanoid then humanoid.PlatformStand = false end
+	end
+end
+
+flyButton.MouseButton1Click:Connect(toggleFly)
+noclipButton.MouseButton1Click:Connect(toggleNoclip)
+
+hudIcon.MouseButton1Click:Connect(function()
+	mainFrame.Visible = not mainFrame.Visible
+end)
+
+-- ================= CONTROLES =================
+UserInputService.InputBegan:Connect(function(input,gp)
+	if gp then return end
+	if input.KeyCode==Enum.KeyCode.W then control.forward=1 end
+	if input.KeyCode==Enum.KeyCode.S then control.backward=1 end
+	if input.KeyCode==Enum.KeyCode.A then control.left=1 end
+	if input.KeyCode==Enum.KeyCode.D then control.right=1 end
+	if input.KeyCode==Enum.KeyCode.Space then control.up=1 end
+	if input.KeyCode==Enum.KeyCode.LeftShift then control.down=1 end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.KeyCode==Enum.KeyCode.W then control.forward=0 end
+	if input.KeyCode==Enum.KeyCode.S then control.backward=0 end
+	if input.KeyCode==Enum.KeyCode.A then control.left=0 end
+	if input.KeyCode==Enum.KeyCode.D then control.right=0 end
+	if input.KeyCode==Enum.KeyCode.Space then control.up=0 end
+	if input.KeyCode==Enum.KeyCode.LeftShift then control.down=0 end
+end)
+
+-- RESPAWN
+player.CharacterAdded:Connect(function(char)
+	character = char
+	humanoid = char:WaitForChild("Humanoid")
+	humanoid.WalkSpeed = walkSpeed
+	humanoid.JumpPower = jumpPower
+end)
