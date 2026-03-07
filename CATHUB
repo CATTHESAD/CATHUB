@@ -8,7 +8,7 @@ local TeleportService = game:GetService("TeleportService")
 local Stats = game:GetService("Stats")
 local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
-
+]
 -- Estados
 local noclipAtivo, flyAtivo, infJumpAtivo, autoClickAtivo, espAtivo = false, false, false, false, false
 local autoRebirthAtivo, streamerModeAtivo = false, false
