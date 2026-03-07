@@ -1,290 +1,187 @@
--- ========================================
--- 🩸 CATHUD PROFISSIONAL FINAL
--- ========================================
+-- CAT MENU v19 MASTER EDITION (NOTIFICAÇÕES + OTMIZAÇÃO)
+repeat task.wait() until game:IsLoaded()
 
-local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local VIM = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
+local Stats = game:GetService("Stats")
+local player = game.Players.LocalPlayer
+local mouse = player:GetMouse()
 
-local player = Players.LocalPlayer
-
--- ================= VARIÁVEIS =================
-local flying = false
-local noclip = false
-
-local speed, minSpeed, maxSpeed = 70, 10, 200
-local walkSpeed, minWalkSpeed, maxWalkSpeed = 16, 8, 100
-local jumpPower, minJumpPower, maxJumpPower = 50, 20, 200
-
-local character, humanoid, root
-local bodyVelocity, bodyGyro
-local flyConnection, noclipConnection
-
-local control = {forward=0,backward=0,left=0,right=0,up=0,down=0}
-
--- ================= GUI =================
-local gui = Instance.new("ScreenGui")
-gui.Name = "CATHUD_GUI"
-gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
-
--- ÍCONE FLUTUANTE
-local hudIcon = Instance.new("TextButton")
-hudIcon.Size = UDim2.new(0,65,0,65)
-hudIcon.Position = UDim2.new(1,-80,0.5,-32)
-hudIcon.BackgroundColor3 = Color3.fromRGB(150,0,0)
-hudIcon.Text = "🩸"
-hudIcon.TextScaled = true
-hudIcon.Font = Enum.Font.GothamBlack
-hudIcon.TextColor3 = Color3.fromRGB(255,255,255)
-hudIcon.Parent = gui
+-- Estados
+local noclipAtivo, flyAtivo, infJumpAtivo, autoClickAtivo, espAtivo = false, false, false, false, false
+local autoRebirthAtivo, streamerModeAtivo = false, false
+local walkSpeedMult, flySpeed = 0, 50
 
 -- HUD PRINCIPAL
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0,850,0,700)
-mainFrame.Position = UDim2.new(0.5,0,0.5,0)
-mainFrame.AnchorPoint = Vector2.new(0.5,0.5)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20,0,0)
-mainFrame.BorderColor3 = Color3.fromRGB(255,0,0)
-mainFrame.BorderSizePixel = 4
-mainFrame.Visible = false
-mainFrame.Parent = gui
-mainFrame.ClipsDescendants = true
+local screenGui = Instance.new("ScreenGui", player.PlayerGui)
+screenGui.Name = "CatMenuMasterV19"
+screenGui.ResetOnSpawn = false
 
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0,25)
+-- SISTEMA DE NOTIFICAÇÕES (AVISOS NO CANTO)
+local notifFrame = Instance.new("Frame", screenGui)
+notifFrame.Size = UDim2.new(0, 220, 0, 400)
+notifFrame.Position = UDim2.new(1, -230, 0.6, 0)
+notifFrame.BackgroundTransparency = 1
+local notifLayout = Instance.new("UIListLayout", notifFrame)
+notifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notifLayout.Padding = UDim.new(0, 5)
 
--- ================= GOTAS DE SANGUE =================
-local function createBloodDrop(parent)
-	local drop = Instance.new("Frame")
-	local size = math.random(6,12)
-	drop.Size = UDim2.new(0,size,0,size*2)
-	drop.BackgroundColor3 = Color3.fromRGB(180,0,0)
-	drop.BorderSizePixel = 0
-	drop.AnchorPoint = Vector2.new(0.5,0)
-	drop.Position = UDim2.new(math.random(),0,-0.1,0)
-	drop.Parent = parent
-	
-	local function animate()
-		drop.Position = UDim2.new(math.random(),0,-0.1,0)
-		local tween = TweenService:Create(drop,
-			TweenInfo.new(math.random(4,7), Enum.EasingStyle.Linear),
-			{Position = UDim2.new(drop.Position.X.Scale,0,1,0)})
-		tween:Play()
-		tween.Completed:Connect(animate)
-	end
-	animate()
+local function avisar(msg, cor)
+    local t = Instance.new("TextLabel", notifFrame)
+    t.Size = UDim2.new(1, 0, 0, 35)
+    t.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    t.TextColor3 = cor or Color3.new(1, 1, 1)
+    t.Text = " [!] " .. msg
+    t.Font = Enum.Font.GothamBold
+    t.TextSize = 13
+    Instance.new("UICorner", t)
+    Instance.new("UIStroke", t).Color = cor or Color3.fromRGB(140, 0, 255)
+    
+    task.delay(4, function()
+        for i = 0, 1, 0.1 do 
+            if not t then break end
+            t.BackgroundTransparency = i; t.TextTransparency = i; task.wait(0.05) 
+        end
+        if t then t:Destroy() end
+    end)
 end
 
-for i=1,20 do
-	createBloodDrop(mainFrame)
-end
+-- MENU PRINCIPAL
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 280, 0, 530)
+mainFrame.Position = UDim2.new(0.05, 0, 0.15, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+mainFrame.Active = true
+mainFrame.Draggable = true 
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+Instance.new("UIStroke", mainFrame).Color = Color3.fromRGB(140, 0, 255)
 
--- LOGO
-local logo = Instance.new("TextLabel")
-logo.Size = UDim2.new(1,0,0,110)
-logo.BackgroundTransparency = 1
-logo.Text = "🩸 CATHUD"
-logo.TextScaled = true
-logo.Font = Enum.Font.GothamBlack
-logo.TextColor3 = Color3.fromRGB(255,0,0)
-logo.Parent = mainFrame
+-- BARRA DE STATUS (FPS/PING)
+local statusBar = Instance.new("Frame", mainFrame)
+statusBar.Size = UDim2.new(1, 0, 0, 25); statusBar.Position = UDim2.new(0, 0, 0.08, 0); statusBar.BackgroundColor3 = Color3.new(0,0,0)
+local infoLabel = Instance.new("TextLabel", statusBar)
+infoLabel.Size = UDim2.new(1, 0, 1, 0); infoLabel.BackgroundTransparency = 1; infoLabel.TextColor3 = Color3.fromRGB(0, 255, 130); infoLabel.Font = Enum.Font.Code
+task.spawn(function()
+    while task.wait(0.5) do
+        local fps = math.floor(1/RunService.RenderStepped:Wait())
+        local ping = math.floor(player:GetNetworkPing() * 1000)
+        infoLabel.Text = "[ FPS: "..fps.." ]  [ PING: "..ping.."ms ]"
+    end
+end)
 
--- ================= SLIDER FUNÇÃO =================
-local function createSlider(yPos, minValue, maxValue, value, text, callback)
+-- TÍTULO E BOTÃO FECHAR
+local title = Instance.new("TextLabel", mainFrame)
+title.Text = "🐱 CAT MENU"; title.Size = UDim2.new(1, 0, 0, 40); title.TextColor3 = Color3.fromRGB(180, 100, 255); title.Font = Enum.Font.GothamBold; title.TextSize = 22; title.BackgroundTransparency = 1
+local closeBtn = Instance.new("TextButton", mainFrame)
+closeBtn.Size = UDim2.new(0, 30, 0, 30); closeBtn.Position = UDim2.new(1, -35, 0, 5); closeBtn.Text = "X"; closeBtn.TextColor3 = Color3.new(1, 1, 1); closeBtn.BackgroundTransparency = 1
+local openIcon = Instance.new("TextButton", screenGui)
+openIcon.Size = UDim2.new(0, 55, 0, 55); openIcon.Position = UDim2.new(0.02, 0, 0.15, 0); openIcon.BackgroundColor3 = Color3.fromRGB(15, 15, 15); openIcon.Text = "🐱"; openIcon.Visible = false
+Instance.new("UICorner", openIcon).CornerRadius = UDim.new(1, 0); Instance.new("UIStroke", openIcon).Color = Color3.fromRGB(140, 0, 255)
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(0.9,0,0,35)
-	label.Position = UDim2.new(0.05,0,0,yPos)
-	label.BackgroundTransparency = 1
-	label.TextColor3 = Color3.fromRGB(255,0,0)
-	label.TextScaled = true
-	label.Font = Enum.Font.Gotham
-	label.Text = text.." "..value
-	label.Parent = mainFrame
+-- ABA DE TELEPORTE
+local tpFrame = Instance.new("Frame", screenGui)
+tpFrame.Size = UDim2.new(0, 200, 0, 320); tpFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15); tpFrame.Visible = false; Instance.new("UICorner", tpFrame); Instance.new("UIStroke", tpFrame).Color = Color3.fromRGB(140, 0, 255)
+local scroll = Instance.new("ScrollingFrame", tpFrame); scroll.Size = UDim2.new(1, -10, 0.8, 0); scroll.Position = UDim2.new(0, 5, 0.18, 0); scroll.BackgroundTransparency = 1; scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+local tpLayout = Instance.new("UIListLayout", scroll); tpLayout.Padding = UDim.new(0, 5)
 
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(0.9,0,0,14)
-	bar.Position = UDim2.new(0.05,0,0,yPos+40)
-	bar.BackgroundColor3 = Color3.fromRGB(60,0,0)
-	bar.BorderSizePixel = 0
-	bar.Parent = mainFrame
+RunService.RenderStepped:Connect(function() if mainFrame.Visible and tpFrame.Visible then tpFrame.Position = UDim2.new(mainFrame.Position.X.Scale, mainFrame.Position.X.Offset + 290, mainFrame.Position.Y.Scale, mainFrame.Position.Y.Offset) end end)
 
-	local handle = Instance.new("Frame")
-	handle.Size = UDim2.new(0,26,0,26)
-	handle.AnchorPoint = Vector2.new(0.5,0.5)
-	handle.Position = UDim2.new((value-minValue)/(maxValue-minValue),0,0.5,0)
-	handle.BackgroundColor3 = Color3.fromRGB(255,0,0)
-	handle.Parent = bar
-
-	local arrow = Instance.new("TextLabel")
-	arrow.Size = UDim2.new(1,0,1,0)
-	arrow.BackgroundTransparency = 1
-	arrow.Text = "⬆️"
-	arrow.TextColor3 = Color3.fromRGB(255,0,0)
-	arrow.TextScaled = true
-	arrow.Parent = handle
-
-	local dragging = false
-
-	handle.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			local percent = math.clamp(
-				(UserInputService:GetMouseLocation().X - bar.AbsolutePosition.X)
-				/ bar.AbsoluteSize.X, 0, 1)
-
-			local newValue = math.floor(minValue + (maxValue-minValue)*percent)
-
-			handle.Position = UDim2.new(percent,0,0.5,0)
-			label.Text = text.." "..newValue
-			callback(newValue)
-		end
+-- FUNÇÕES CORE
+local function criarBotao(texto, pos, callback)
+	local btn = Instance.new("TextButton", mainFrame)
+	btn.Size = UDim2.new(0.9, 0, 0, 32); btn.Position = pos; btn.Text = texto; btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25); btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.Gotham; Instance.new("UICorner", btn)
+	btn.MouseButton1Click:Connect(function()
+		local ligado = callback(); if ligado ~= nil then btn.BackgroundColor3 = ligado and Color3.fromRGB(140, 0, 255) or Color3.fromRGB(25, 25, 25); avisar(texto .. (ligado and " LIGADO" or " DESLIGADO"), ligado and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)) end
 	end)
 end
 
--- ================= CRIAR SLIDERS =================
-local baseY = 130
-local gap = 170
-
-createSlider(baseY, minSpeed, maxSpeed, speed, "Velocidade de Voo:", function(v)
-	speed = v
-end)
-
-createSlider(baseY+gap, minWalkSpeed, maxWalkSpeed, walkSpeed, "Velocidade de Andar:", function(v)
-	walkSpeed = v
-	if humanoid then humanoid.WalkSpeed = v end
-end)
-
-createSlider(baseY+gap*2, minJumpPower, maxJumpPower, jumpPower, "Altura do Pulo:", function(v)
-	jumpPower = v
-	if humanoid then humanoid.JumpPower = v end
-end)
-
--- ================= BOTÕES ORGANIZADOS =================
-local buttonContainer = Instance.new("Frame")
-buttonContainer.Size = UDim2.new(0.9,0,0,90)
-buttonContainer.Position = UDim2.new(0.05,0,1,-120)
-buttonContainer.BackgroundTransparency = 1
-buttonContainer.Parent = mainFrame
-
-local flyButton = Instance.new("TextButton")
-flyButton.Size = UDim2.new(0.48,0,1,0)
-flyButton.Position = UDim2.new(0,0,0,0)
-flyButton.BackgroundColor3 = Color3.fromRGB(255,0,0)
-flyButton.Text = "🛫 Fly"
-flyButton.TextScaled = true
-flyButton.Font = Enum.Font.GothamBold
-flyButton.TextColor3 = Color3.fromRGB(255,255,255)
-flyButton.Parent = buttonContainer
-
-local noclipButton = Instance.new("TextButton")
-noclipButton.Size = UDim2.new(0.48,0,1,0)
-noclipButton.Position = UDim2.new(0.52,0,0,0)
-noclipButton.BackgroundColor3 = Color3.fromRGB(150,0,0)
-noclipButton.Text = "🚫 Noclip"
-noclipButton.TextScaled = true
-noclipButton.Font = Enum.Font.GothamBold
-noclipButton.TextColor3 = Color3.fromRGB(255,255,255)
-noclipButton.Parent = buttonContainer
-
--- ================= FUNÇÕES =================
-local function toggleNoclip()
-	noclip = not noclip
-	
-	if noclip then
-		noclipConnection = RunService.Stepped:Connect(function()
-			for _,v in pairs(player.Character:GetDescendants()) do
-				if v:IsA("BasePart") then
-					v.CanCollide = false
-				end
-			end
-		end)
-	else
-		if noclipConnection then noclipConnection:Disconnect() end
-		for _,v in pairs(player.Character:GetDescendants()) do
-			if v:IsA("BasePart") then
-				v.CanCollide = true
-			end
+-- AUTO CLICKER E REBIRTH
+task.spawn(function()
+	while true do task.wait(0.05)
+		if autoClickAtivo then
+            local objects = player.PlayerGui:GetGuiObjectsAtPosition(mouse.X, mouse.Y); local emHUD = false
+            for _, obj in pairs(objects) do if obj:IsDescendantOf(screenGui) then emHUD = true break end end
+            if not emHUD then VIM:SendMouseButtonEvent(mouse.X, mouse.Y, 0, true, game, 1); VIM:SendMouseButtonEvent(mouse.X, mouse.Y, 0, false, game, 1) end
 		end
 	end
+end)
+
+task.spawn(function()
+    while task.wait(2.5) do
+        if autoRebirthAtivo then
+            for _, v in pairs(game:GetDescendants()) do if v:IsA("RemoteEvent") and (v.Name:lower():find("rebirth") or v.Name:lower():find("rb") or v.Name:lower():find("renascer")) then v:FireServer() end end
+        end
+    end
+end)
+
+-- MONTAGEM DOS BOTÕES
+criarBotao("NOCLIP", UDim2.new(0.05, 0, 0, 90), function() noclipAtivo = not noclipAtivo return noclipAtivo end)
+criarBotao("FLY", UDim2.new(0.05, 0, 0, 130), function() flyAtivo = not flyAtivo; if flyAtivo then startFly() else stopFly() end return flyAtivo end)
+criarBotao("INF JUMP", UDim2.new(0.05, 0, 0, 170), function() infJumpAtivo = not infJumpAtivo return infJumpAtivo end)
+criarBotao("AUTO CLICKER", UDim2.new(0.05, 0, 0, 210), function() autoClickAtivo = not autoClickAtivo return autoClickAtivo end)
+criarBotao("AUTO REBIRTH", UDim2.new(0.05, 0, 0, 250), function() autoRebirthAtivo = not autoRebirthAtivo return autoRebirthAtivo end)
+criarBotao("ESP PLAYERS", UDim2.new(0.05, 0, 0, 290), function() espAtivo = not espAtivo; if not espAtivo then for _,p in pairs(game.Players:GetPlayers()) do if p.Character and p.Character:FindFirstChild("CatESP") then p.Character.CatESP:Destroy() end end end return espAtivo end)
+criarBotao("STREAMER MODE", UDim2.new(0.05, 0, 0, 330), function() streamerModeAtivo = not streamerModeAtivo return streamerModeAtivo end)
+criarBotao("TELEPORT LIST", UDim2.new(0.05, 0, 0, 370), function() tpFrame.Visible = not tpFrame.Visible; if tpFrame.Visible then atualizarLista() end return tpFrame.Visible end)
+criarBotao("QUICK REJOIN", UDim2.new(0.05, 0, 0, 410), function() avisar("RECONECTANDO...", Color3.new(1, 1, 0)); task.wait(0.5); TeleportService:Teleport(game.PlaceId, player) end)
+
+-- SLIDERS
+local function criarSlider(lStr, pos, min, max, callback)
+	local l = Instance.new("TextLabel", mainFrame); l.Text = lStr .. ": 0"; l.Position = pos; l.Size = UDim2.new(1, 0, 0, 20); l.TextColor3 = Color3.new(0.7, 0.7, 0.7); l.BackgroundTransparency = 1
+	local bg = Instance.new("Frame", mainFrame); bg.Size = UDim2.new(0.8, 0, 0, 5); bg.Position = pos + UDim2.new(0.1, 0, 0, 20); bg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	local s = Instance.new("TextButton", bg); s.Size = UDim2.new(0, 12, 0, 12); s.Position = UDim2.new(0, -6, 0.5, -6); s.Text = ""; s.BackgroundColor3 = Color3.fromRGB(180, 100, 255); Instance.new("UICorner", s).CornerRadius = UDim.new(1,0)
+	local drag = false; s.MouseButton1Down:Connect(function() drag = true end)
+	UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end end)
+	RunService.RenderStepped:Connect(function() if drag then local rel = math.clamp((UserInputService:GetMouseLocation().X - bg.AbsolutePosition.X)/bg.AbsoluteSize.X, 0, 1); s.Position = UDim2.new(rel, -6, 0.5, -6); local val = min + (max-min)*rel; l.Text = lStr .. ": " .. math.floor(val); callback(val) end end)
 end
+criarSlider("SPEED BOOST", UDim2.new(0, 0, 0, 450), 0, 15, function(v) walkSpeedMult = v end)
+criarSlider("FLY SPEED", UDim2.new(0, 0, 0, 490), 10, 400, function(v) flySpeed = v end)
 
-local function toggleFly()
-	flying = not flying
-	
-	if flying then
-		character = player.Character
-		humanoid = character:WaitForChild("Humanoid")
-		root = character:WaitForChild("HumanoidRootPart")
-		
-		humanoid.PlatformStand = true
-		
-		bodyVelocity = Instance.new("BodyVelocity", root)
-		bodyVelocity.MaxForce = Vector3.new(9e9,9e9,9e9)
+-- LOOPS CORE
+local bv, bg
+function startFly() local r = player.Character.HumanoidRootPart; bg = Instance.new("BodyGyro", r); bg.maxTorque = Vector3.new(9e9, 9e9, 9e9); bv = Instance.new("BodyVelocity", r); bv.maxForce = Vector3.new(9e9, 9e9, 9e9) end
+function stopFly() if bv then bv:Destroy() end if bg then bg:Destroy() end end
 
-		bodyGyro = Instance.new("BodyGyro", root)
-		bodyGyro.MaxTorque = Vector3.new(9e9,9e9,9e9)
-		bodyGyro.P = 10000
-
-		flyConnection = RunService.RenderStepped:Connect(function()
-			local cam = workspace.CurrentCamera
-			local dir = (cam.CFrame.LookVector*(control.forward-control.backward))
-				+ (cam.CFrame.RightVector*(control.right-control.left))
-				+ (Vector3.new(0,1,0)*(control.up-control.down))
-			bodyVelocity.Velocity = dir * speed
-			bodyGyro.CFrame = cam.CFrame
-		end)
-	else
-		if flyConnection then flyConnection:Disconnect() end
-		if bodyVelocity then bodyVelocity:Destroy() end
-		if bodyGyro then bodyGyro:Destroy() end
-		if humanoid then humanoid.PlatformStand = false end
+RunService.Stepped:Connect(function()
+	local char = player.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		local r, h = char.HumanoidRootPart, char.Humanoid
+		if walkSpeedMult > 0 and h.MoveDirection.Magnitude > 0 and not flyAtivo then r.CFrame = r.CFrame + (h.MoveDirection * (walkSpeedMult * 0.15)) end
+		if flyAtivo and bv then
+			local cam = workspace.CurrentCamera.CFrame; local d = Vector3.new(0,0,0)
+			if UserInputService:IsKeyDown("W") then d = d + cam.LookVector end
+			if UserInputService:IsKeyDown("S") then d = d - cam.LookVector end
+			if UserInputService:IsKeyDown("A") then d = d - cam.RightVector end
+			if UserInputService:IsKeyDown("D") then d = d + cam.RightVector end
+            if UserInputService:IsKeyDown("E") then d = d + Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown("Q") then d = d - Vector3.new(0,1,0) end
+			bv.velocity = d * flySpeed; bg.cframe = cam
+		end
+		if noclipAtivo then h:ChangeState(11); for _, v in pairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end 
+		elseif not flyAtivo then for _, v in pairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = true end end end
 	end
+    -- OTIMIZAÇÃO DE ESP E STREAMER MODE
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p.Character and p.Character:FindFirstChild("Humanoid") then p.Character.Humanoid.DisplayName = streamerModeAtivo and "User" or p.DisplayName end
+        if espAtivo and p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = (player.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+            local h = p.Character:FindFirstChild("CatESP") or Instance.new("Highlight", p.Character)
+            h.Name = "CatESP"; h.FillColor = Color3.fromRGB(140, 0, 255); h.Enabled = (dist < 1000) -- DISTANCIA SAFE
+        end
+    end
+end)
+
+function atualizarLista()
+	for _, v in pairs(scroll:GetChildren()) do if v:IsA("TextButton") then v:Destroy() end end
+	for _, p in pairs(game.Players:GetPlayers()) do if p ~= player then
+		local pBtn = Instance.new("TextButton", scroll); pBtn.Size = UDim2.new(1, -10, 0, 30); pBtn.Text = p.DisplayName; pBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30); pBtn.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", pBtn)
+		pBtn.MouseButton1Click:Connect(function() player.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame end)
+	end end
 end
+local ref = Instance.new("TextButton", tpFrame); ref.Size = UDim2.new(0.9, 0, 0.1, 0); ref.Position = UDim2.new(0.05, 0, 0.05, 0); ref.Text = "REFRESH"; ref.BackgroundColor3 = Color3.fromRGB(140, 0, 255); Instance.new("UICorner", ref); ref.MouseButton1Click:Connect(atualizarLista)
 
-flyButton.MouseButton1Click:Connect(toggleFly)
-noclipButton.MouseButton1Click:Connect(toggleNoclip)
-
-hudIcon.MouseButton1Click:Connect(function()
-	mainFrame.Visible = not mainFrame.Visible
-end)
-
--- ================= CONTROLES =================
-UserInputService.InputBegan:Connect(function(input,gp)
-	if gp then return end
-	if input.KeyCode==Enum.KeyCode.W then control.forward=1 end
-	if input.KeyCode==Enum.KeyCode.S then control.backward=1 end
-	if input.KeyCode==Enum.KeyCode.A then control.left=1 end
-	if input.KeyCode==Enum.KeyCode.D then control.right=1 end
-	if input.KeyCode==Enum.KeyCode.Space then control.up=1 end
-	if input.KeyCode==Enum.KeyCode.LeftShift then control.down=1 end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.KeyCode==Enum.KeyCode.W then control.forward=0 end
-	if input.KeyCode==Enum.KeyCode.S then control.backward=0 end
-	if input.KeyCode==Enum.KeyCode.A then control.left=0 end
-	if input.KeyCode==Enum.KeyCode.D then control.right=0 end
-	if input.KeyCode==Enum.KeyCode.Space then control.up=0 end
-	if input.KeyCode==Enum.KeyCode.LeftShift then control.down=0 end
-end)
-
--- RESPAWN
-player.CharacterAdded:Connect(function(char)
-	character = char
-	humanoid = char:WaitForChild("Humanoid")
-	humanoid.WalkSpeed = walkSpeed
-	humanoid.JumpPower = jumpPower
-end)
+closeBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false; openIcon.Visible = true; tpFrame.Visible = false end)
+openIcon.MouseButton1Click:Connect(function() mainFrame.Visible = true; openIcon.Visible = false end)
+UserInputService.JumpRequest:Connect(function() if infJumpAtivo then player.Character.Humanoid:ChangeState(3) end end)
